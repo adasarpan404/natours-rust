@@ -14,3 +14,6 @@ mongodb = "2.7"
 tokio = { version = "1", features = ["full"] }
 futures = "0.3.30"
 futures-util = "0.3.30"
+argon2 = "0.5.3"
+rand = "0.8.5"
+

@@ -7,5 +7,23 @@ pub struct User {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
     pub name: String,
-    pub description: String,
+    pub email: String,
+    pub password: String,
+}
+
+impl User {
+    pub fn new(name: String, email: String, password: String) -> Self {
+        Self {
+            id: None,
+            name,
+            password,
+            email,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct LoginRequest {
+    email: String,
+    password: String,
 }

@@ -1,6 +1,7 @@
 use actix_web::{web, App, HttpServer};
 use routes::init;
 
+mod constants;
 mod db;
 mod env;
 mod handlers;
