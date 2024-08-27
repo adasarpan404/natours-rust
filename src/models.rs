@@ -24,6 +24,6 @@ impl User {
 
 #[derive(Serialize, Deserialize)]
 pub struct LoginRequest {
-    email: String,
-    password: String,
+    pub email: String,
+    pub password: String,
 }

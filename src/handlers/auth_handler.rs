@@ -52,5 +52,20 @@ pub async fn signup(db: web::Data<Database>, item: web::Json<User>) -> impl Resp
 pub async fn login(db: web::Data<Database>, item: web::Json<LoginRequest>) -> impl Responder {
     let user_collection = db.collection::<User>(USERS);
 
-    let filter = doc! {"email": item.email};
+    let filter = doc! {"email": item.email.clone()};
+
+    let existing_user = match user_collection.find_one(filter, None).await {
+        Ok(Some(user)) => user, // User found, bind it to `user`
+        Ok(None) => return HttpResponse::NotFound().body("User Not Found"),
+        Err(err) => return HttpResponse::InternalServerError().body(err.to_string()),
+    };
+
+    let is_correct =
+        verify_user_password(existing_user.password.as_str(), item.password.as_str()).await;
+
+    match is_correct {
+        Ok(true) => HttpResponse::Ok().json(existing_user),
+        Ok(false) => HttpResponse::Unauthorized().body("Incorrect Password"),
+        Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
+    }
 }
