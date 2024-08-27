@@ -5,6 +5,7 @@ mod constants;
 mod db;
 mod env;
 mod handlers;
+mod helpers;
 mod models;
 mod routes;
 

@@ -1,13 +1,17 @@
 use crate::{
     constants::USERS,
-    models::{LoginRequest, User},
+    helpers::token::create_jwt,
+    models::auth::{LoginRequest, User, UserResponse},
 };
 use actix_web::{web, HttpResponse, Responder};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use mongodb::{bson::doc, Database};
+use mongodb::{
+    bson::{doc, Bson},
+    Database,
+};
 
 async fn hash_user_password(password: &str) -> Result<String, argon2::password_hash::Error> {
     let salt = SaltString::generate(&mut OsRng);
@@ -32,19 +36,34 @@ async fn verify_user_password(
 }
 
 pub async fn signup(db: web::Data<Database>, item: web::Json<User>) -> impl Responder {
-    let user_collection = db.collection::<User>(USERS);
+    let user_collection = db.collection::<User>("users");
 
-    let hashed_password = match hash_user_password(item.password.as_str()).await {
+    let hashed_password = match hash_user_password(&item.password).await {
         Ok(password) => password,
         Err(err) => return HttpResponse::InternalServerError().body(err.to_string()),
     };
 
     let new_user = User::new(item.name.clone(), item.email.clone(), hashed_password);
 
-    let insert_result = user_collection.insert_one(new_user.clone(), None).await;
+    let insert_result = user_collection.insert_one(&new_user, None).await;
 
-    match insert_result {
-        Ok(_) => HttpResponse::Ok().json(new_user),
+    let inserted_user_id = match insert_result {
+        Ok(result) => result.inserted_id,
+        Err(err) => return HttpResponse::InternalServerError().body(err.to_string()),
+    };
+
+    let inserted_user_id_str = match inserted_user_id {
+        Bson::ObjectId(oid) => oid.to_hex(),
+        _ => return HttpResponse::InternalServerError().body("Invalid inserted_id".to_string()),
+    };
+
+    let token = create_jwt(inserted_user_id_str);
+
+    match token {
+        Ok(token) => HttpResponse::Ok().json(UserResponse {
+            user: new_user,
+            token,
+        }),
         Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
     }
 }
