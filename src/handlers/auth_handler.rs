@@ -1,7 +1,7 @@
 use crate::{
     constants::USERS,
-    helpers::token::create_jwt,
-    models::auth::{LoginRequest, User, UserResponse},
+    helpers::{error_response::ErrorResponse, response::UserResponse, token::create_jwt},
+    models::auth::{LoginRequest, User},
 };
 use actix_web::{web, HttpResponse, Responder};
 use argon2::{
@@ -40,7 +40,12 @@ pub async fn signup(db: web::Data<Database>, item: web::Json<User>) -> impl Resp
 
     let hashed_password = match hash_user_password(&item.password).await {
         Ok(password) => password,
-        Err(err) => return HttpResponse::InternalServerError().body(err.to_string()),
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(ErrorResponse {
+                success: false,
+                message: err.to_string(),
+            })
+        }
     };
 
     let new_user = User::new(item.name.clone(), item.email.clone(), hashed_password);
@@ -49,12 +54,22 @@ pub async fn signup(db: web::Data<Database>, item: web::Json<User>) -> impl Resp
 
     let inserted_user_id = match insert_result {
         Ok(result) => result.inserted_id,
-        Err(err) => return HttpResponse::InternalServerError().body(err.to_string()),
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(ErrorResponse {
+                success: false,
+                message: err.to_string(),
+            })
+        }
     };
 
     let inserted_user_id_str = match inserted_user_id {
         Bson::ObjectId(oid) => oid.to_hex(),
-        _ => return HttpResponse::InternalServerError().body("Invalid inserted_id".to_string()),
+        _ => {
+            return HttpResponse::InternalServerError().json(ErrorResponse {
+                success: false,
+                message: "Invalid inserted_id".to_string(),
+            })
+        }
     };
 
     let token = create_jwt(inserted_user_id_str);
@@ -63,8 +78,12 @@ pub async fn signup(db: web::Data<Database>, item: web::Json<User>) -> impl Resp
         Ok(token) => HttpResponse::Ok().json(UserResponse {
             user: new_user,
             token,
+            success: true,
         }),
-        Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
+        Err(err) => HttpResponse::InternalServerError().json(ErrorResponse {
+            success: false,
+            message: err.to_string(),
+        }),
     }
 }
 
@@ -74,9 +93,19 @@ pub async fn login(db: web::Data<Database>, item: web::Json<LoginRequest>) -> im
     let filter = doc! {"email": item.email.clone()};
 
     let existing_user = match user_collection.find_one(filter, None).await {
-        Ok(Some(user)) => user, // User found, bind it to `user`
-        Ok(None) => return HttpResponse::NotFound().body("User Not Found"),
-        Err(err) => return HttpResponse::InternalServerError().body(err.to_string()),
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(ErrorResponse {
+                success: false,
+                message: "User Not Found".to_string(),
+            })
+        }
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(ErrorResponse {
+                success: false,
+                message: err.to_string(),
+            })
+        }
     };
 
     let is_correct =
@@ -84,7 +113,13 @@ pub async fn login(db: web::Data<Database>, item: web::Json<LoginRequest>) -> im
 
     match is_correct {
         Ok(true) => HttpResponse::Ok().json(existing_user),
-        Ok(false) => HttpResponse::Unauthorized().body("Incorrect Password"),
-        Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
+        Ok(false) => HttpResponse::Unauthorized().json(ErrorResponse {
+            success: false,
+            message: "Invalid Password".to_string(),
+        }),
+        Err(err) => HttpResponse::InternalServerError().json(ErrorResponse {
+            success: false,
+            message: err.to_string(),
+        }),
     }
 }
