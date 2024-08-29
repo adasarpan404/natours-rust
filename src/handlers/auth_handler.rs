@@ -109,17 +109,47 @@ pub async fn login(db: web::Data<Database>, item: web::Json<LoginRequest>) -> im
     };
 
     let is_correct =
-        verify_user_password(existing_user.password.as_str(), item.password.as_str()).await;
+        match verify_user_password(existing_user.password.as_str(), item.password.as_str()).await {
+            Ok(true) => true,
+            Ok(false) => {
+                return HttpResponse::Unauthorized().json(ErrorResponse {
+                    success: false,
+                    message: "Invalid Password".to_string(),
+                })
+            }
+            Err(err) => {
+                return HttpResponse::InternalServerError().json(ErrorResponse {
+                    success: false,
+                    message: err.to_string(),
+                })
+            }
+        };
 
-    match is_correct {
-        Ok(true) => HttpResponse::Ok().json(existing_user),
-        Ok(false) => HttpResponse::Unauthorized().json(ErrorResponse {
-            success: false,
-            message: "Invalid Password".to_string(),
-        }),
-        Err(err) => HttpResponse::InternalServerError().json(ErrorResponse {
-            success: false,
-            message: err.to_string(),
-        }),
-    }
+    let existing_user_id_string = match existing_user.id {
+        Some(oid) => oid.to_hex(),
+        None => {
+            return HttpResponse::InternalServerError().json(ErrorResponse {
+                success: false,
+                message: "Invalid inserted_id".to_string(),
+            })
+        }
+    };
+
+    println!("the password is {}", is_correct);
+
+    let token = match create_jwt(existing_user_id_string) {
+        Ok(token) => token,
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(ErrorResponse {
+                success: false,
+                message: err.to_string(),
+            })
+        }
+    };
+
+    HttpResponse::Ok().json(UserResponse {
+        user: existing_user,
+        success: true,
+        token,
+    })
 }
